@@ -5,15 +5,15 @@ const { OAuth2Client } = require('google-auth-library');
 
 const app = express();
 
-// Google Client ID จาก Google Cloud Console (ใส่ของมึงเอง หรือใช้ env variable)
+// Google Client ID (ใช้ env variable หรือใส่ตรงๆ)
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '876638950101-dl5ba8ccklu0j6hng80gr9j9a7ddgae8.apps.googleusercontent.com';
 const client = new OAuth2Client(CLIENT_ID);
 
 // Middleware
-app.use(express.json()); // Parse JSON bodies
-app.use(express.static(path.join(__dirname, 'public'))); // เสิร์ฟไฟล์ static จาก public
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
-// SQLite Database (ใช้ in-memory เพราะ Render ไม่เก็บไฟล์ถาวร)
+// SQLite in-memory
 const db = new sqlite3.Database(':memory:', (err) => {
   if (err) {
     console.error('Error connecting to SQLite:', err.message);
@@ -22,7 +22,7 @@ const db = new sqlite3.Database(':memory:', (err) => {
   }
 });
 
-// สร้างตาราง todos ถ้ายังไม่มี
+// สร้างตาราง todos
 db.run(`
   CREATE TABLE IF NOT EXISTS todos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,12 +33,12 @@ db.run(`
   )
 `);
 
-// Root route - เสิร์ฟ index.html
+// Root route
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// API เพื่อ verify Google token และ login
+// Google Sign-In endpoint
 app.post('/auth/google', async (req, res) => {
   const { token } = req.body;
   try {
@@ -55,9 +55,9 @@ app.post('/auth/google', async (req, res) => {
   }
 });
 
-// API ดึง todos ของผู้ใช้
+// API ดึง todos
 app.get('/todos', (req, res) => {
-  const userId = req.query.userId; // ส่ง userId มาจาก client
+  const userId = req.query.userId;
   if (!userId) {
     return res.status(400).json({ error: 'User ID required' });
   }
@@ -89,7 +89,7 @@ app.post('/todos', (req, res) => {
   );
 });
 
-// API อัพเดท todo (mark completed)
+// API อัพเดท todo
 app.put('/todos/:id', (req, res) => {
   const { id } = req.params;
   const { completed } = req.body;
