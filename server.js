@@ -68,6 +68,7 @@ app.delete('/tasks/:id', verifyToken, (req, res) => {
     });
 });
 
-app.listen(port, () => {
-    console.log(`เซิร์ฟเวอร์รันอยู่ที่ http://localhost:${port}`);
+const PORT = process.env.PORT || 3000; // Render จะกำหนด PORT ให้ ถ้าไม่มีใช้ 3000
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`เซิร์ฟเวอร์รันอยู่ที่พอร์ต ${PORT}`);
 });
