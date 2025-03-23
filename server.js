@@ -1,37 +1,35 @@
 const express = require('express');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg');
 const { OAuth2Client } = require('google-auth-library');
 
 const app = express();
 
-// Google Client ID (ใช้ env variable หรือใส่ตรงๆ)
+// Google Client ID
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '876638950101-dl5ba8ccklu0j6hng80gr9j9a7ddgae8.apps.googleusercontent.com';
 const client = new OAuth2Client(CLIENT_ID);
+
+// PostgreSQL Connection
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://todo_db_r5av_user:icEffEOeiNbwut964abrgYWapiRftguv@dpg-cvftbulsvqrc73d4d810-a/todo_db_r5av',
+  ssl: { rejectUnauthorized: false } // Render ต้องการ SSL
+});
 
 // Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// SQLite in-memory
-const db = new sqlite3.Database(':memory:', (err) => {
-  if (err) {
-    console.error('Error connecting to SQLite:', err.message);
-  } else {
-    console.log('Connected to in-memory SQLite database');
-  }
-});
-
-// สร้างตาราง todos
-db.run(`
+// สร้างตาราง todos ถ้ายังไม่มี
+pool.query(`
   CREATE TABLE IF NOT EXISTS todos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     user_id TEXT NOT NULL,
     task TEXT NOT NULL,
-    completed INTEGER DEFAULT 0,
+    completed BOOLEAN DEFAULT FALSE,
     due_date TEXT
   )
-`);
+`).then(() => console.log('Connected to PostgreSQL'))
+  .catch(err => console.error('Error connecting to PostgreSQL:', err));
 
 // Root route
 app.get('/', (req, res) => {
@@ -55,67 +53,65 @@ app.post('/auth/google', async (req, res) => {
   }
 });
 
-// API ดึง todos
-app.get('/todos', (req, res) => {
+// API ดึง todos เฉพาะ user
+app.get('/todos', async (req, res) => {
   const userId = req.query.userId;
   if (!userId) {
     return res.status(400).json({ error: 'User ID required' });
   }
-  db.all('SELECT * FROM todos WHERE user_id = ?', [userId], (err, rows) => {
-    if (err) {
-      console.error('Error fetching todos:', err);
-      return res.status(500).json({ error: 'Database error' });
-    }
-    res.json(rows);
-  });
+  try {
+    const result = await pool.query('SELECT * FROM todos WHERE user_id = $1', [userId]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching todos:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // API เพิ่ม todo
-app.post('/todos', (req, res) => {
+app.post('/todos', async (req, res) => {
   const { userId, task, dueDate } = req.body;
   if (!userId || !task) {
     return res.status(400).json({ error: 'User ID and task required' });
   }
-  db.run(
-    'INSERT INTO todos (user_id, task, due_date) VALUES (?, ?, ?)',
-    [userId, task, dueDate || null],
-    function (err) {
-      if (err) {
-        console.error('Error adding todo:', err);
-        return res.status(500).json({ error: 'Database error' });
-      }
-      res.json({ id: this.lastID, userId, task, dueDate, completed: 0 });
-    }
-  );
+  try {
+    const result = await pool.query(
+      'INSERT INTO todos (user_id, task, due_date) VALUES ($1, $2, $3) RETURNING *',
+      [userId, task, dueDate || null]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error adding todo:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // API อัพเดท todo
-app.put('/todos/:id', (req, res) => {
+app.put('/todos/:id', async (req, res) => {
   const { id } = req.params;
   const { completed } = req.body;
-  db.run(
-    'UPDATE todos SET completed = ? WHERE id = ?',
-    [completed ? 1 : 0, id],
-    function (err) {
-      if (err) {
-        console.error('Error updating todo:', err);
-        return res.status(500).json({ error: 'Database error' });
-      }
-      res.json({ success: true });
-    }
-  );
+  try {
+    await pool.query(
+      'UPDATE todos SET completed = $1 WHERE id = $2',
+      [completed, id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error updating todo:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // API ลบ todo
-app.delete('/todos/:id', (req, res) => {
+app.delete('/todos/:id', async (req, res) => {
   const { id } = req.params;
-  db.run('DELETE FROM todos WHERE id = ?', [id], function (err) {
-    if (err) {
-      console.error('Error deleting todo:', err);
-      return res.status(500).json({ error: 'Database error' });
-    }
+  try {
+    await pool.query('DELETE FROM todos WHERE id = $1', [id]);
     res.json({ success: true });
-  });
+  } catch (err) {
+    console.error('Error deleting todo:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 // Start server
