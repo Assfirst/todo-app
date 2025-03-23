@@ -1,111 +1,116 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>To-Do List</title>
- <link rel="stylesheet" href="/styles.css">
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <title>To-Do List</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body>
-  <div id="signin-button"></div>
-  <div id="app" style="display: none;">
-    <h1>To-Do List</h1>
-    <input id="task-input" type="text" placeholder="Add a task">
-    <input id="due-date" type="date">
-    <button onclick="addTask()">Add Task</button>
-    <ul id="todo-list"></ul>
-  </div>
+<body class="bg-light min-vh-100 d-flex flex-column align-items-center p-4">
+    <h1 class="text-center text-dark mb-4">To-Do List ของมึง</h1>
+    <div id="auth" class="mb-3"></div>
+    <div class="input-group mb-4 w-50">
+        <input id="taskInput" class="form-control" placeholder="พิมพ์งานใหม่ที่นี่">
+        <input id="dueDateInput" type="date" class="form-control">
+        <button onclick="addTask()" class="btn btn-primary">เพิ่มงาน</button>
+    </div>
+    <div id="taskList" class="w-50"></div>
 
-  <script>
-    // ใส่ Google Client ID ของมึงที่นี่ (จาก Google Cloud Console)
-    const CLIENT_ID = '876638950101-dl5ba8ccklu0j6hng80gr9j9a7ddgae8.apps.googleusercontent.com';
-    let userId;
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script>
+        let userToken = null;
 
-    function handleCredentialResponse(response) {
-      fetch('/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: response.credential })
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          userId = data.userId;
-          document.getElementById('signin-button').style.display = 'none';
-          document.getElementById('app').style.display = 'block';
-          loadTodos();
-        } else {
-          console.error('Sign-in failed:', data.error);
+        function handleCredentialResponse(response) {
+            userToken = response.credential;
+            document.getElementById("auth").innerHTML = "ล็อกอินแล้ว! (กดรีเฟรชเพื่อออก)";
+            fetchTasks();
         }
-      })
-      .catch(err => console.error('Error during sign-in:', err));
-    }
 
-    function loadTodos() {
-      fetch(`/todos?userId=${userId}`)
-        .then(res => res.json())
-        .then(todos => {
-          const list = document.getElementById('todo-list');
-          list.innerHTML = '';
-          todos.forEach(todo => {
-            const li = document.createElement('li');
-            li.innerHTML = `
-              <input type="checkbox" ${todo.completed ? 'checked' : ''} onchange="updateTask(${todo.id}, this.checked)">
-              ${todo.task} ${todo.due_date ? '(Due: ' + todo.due_date + ')' : ''}
-              <button onclick="deleteTask(${todo.id})">Delete</button>
-            `;
-            list.appendChild(li);
-          });
-        })
-        .catch(err => console.error('Error loading todos:', err));
-    }
+        window.onload = () => {
+            google.accounts.id.initialize({
+                client_id: "876638950101-dl5ba8ccklu0j6hng80gr9j9a7ddgae8.apps.googleusercontent.com",
+                callback: handleCredentialResponse
+            });
+            google.accounts.id.renderButton(
+                document.getElementById("auth"),
+                { theme: "outline", size: "large" }
+            );
+        };
 
-    function addTask() {
-      const task = document.getElementById('task-input').value;
-      const dueDate = document.getElementById('due-date').value;
-      if (!task) return;
-      fetch('/todos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, task, dueDate })
-      })
-      .then(res => res.json())
-      .then(() => {
-        document.getElementById('task-input').value = '';
-        document.getElementById('due-date').value = '';
-        loadTodos();
-      })
-      .catch(err => console.error('Error adding task:', err));
-    }
+        function fetchTasks() {
+            if (!userToken) return alert("มึงต้องล็อกอินก่อน!");
+            fetch('/tasks', { headers: { 'Authorization': `Bearer ${userToken}` } })
+                .then(res => res.json())
+                .then(tasks => {
+                    let taskList = document.getElementById("taskList");
+                    taskList.innerHTML = "";
+                    tasks.forEach(task => {
+                        taskList.innerHTML += `
+                            <div class="card mb-2">
+                                <div class="card-body d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <input type="checkbox" ${task.completed ? 'checked' : ''} 
+                                            onchange="toggleComplete(${task.id}, this.checked)">
+                                        <span class="${task.completed ? 'text-decoration-line-through' : ''}">${task.task}</span>
+                                        <small class="text-muted">${task.due_date || 'ไม่มีกำหนด'}</small>
+                                    </div>
+                                    <div>
+                                        <button onclick="editTask(${task.id})" class="btn btn-sm btn-outline-primary me-2">แก้</button>
+                                        <button onclick="deleteTask(${task.id})" class="btn btn-sm btn-outline-danger">ลบ</button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                });
+        }
 
-    function updateTask(id, completed) {
-      fetch(`/todos/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ completed })
-      })
-      .then(() => loadTodos())
-      .catch(err => console.error('Error updating task:', err));
-    }
+        function addTask() {
+            let task = document.getElementById("taskInput").value;
+            let dueDate = document.getElementById("dueDateInput").value;
+            if (task && userToken) {
+                fetch('/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+                    body: JSON.stringify({ task, due_date: dueDate })
+                }).then(() => {
+                    document.getElementById("taskInput").value = "";
+                    document.getElementById("dueDateInput").value = "";
+                    fetchTasks();
+                });
+            } else {
+                alert("มึงต้องพิมพ์งานและล็อกอินก่อน!");
+            }
+        }
 
-    function deleteTask(id) {
-      fetch(`/todos/${id}`, { method: 'DELETE' })
-        .then(() => loadTodos())
-        .catch(err => console.error('Error deleting task:', err));
-    }
+        function editTask(id) {
+            let newTask = prompt("แก้เป็นอะไร:");
+            let newDueDate = prompt("กำหนดวันใหม่ (YYYY-MM-DD):");
+            if (newTask && userToken) {
+                fetch(`/tasks/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+                    body: JSON.stringify({ task: newTask, completed: 0, due_date: newDueDate || null })
+                }).then(() => fetchTasks());
+            }
+        }
 
-    window.onload = () => {
-      google.accounts.id.initialize({
-        client_id: CLIENT_ID,
-        callback: handleCredentialResponse,
-        // ระบุ redirect URI ให้ชัดเจน (แม้ GIS ไม่ใช้ redirect URI โดยตรง แต่เพิ่มเพื่อความชัวร์)
-        redirect_uri: 'https://todo-app-g26u.onrender.com/auth/google'
-      });
-      google.accounts.id.renderButton(
-        document.getElementById('signin-button'),
-        { theme: 'outline', size: 'large' }
-      );
-    };
-  </script>
+        function deleteTask(id) {
+            if (userToken) {
+                fetch(`/tasks/${id}`, { 
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${userToken}` }
+                }).then(() => fetchTasks());
+            }
+        }
+
+        function toggleComplete(id, completed) {
+            fetch(`/tasks/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+                body: JSON.stringify({ task: null, completed: completed ? 1 : 0, due_date: null })
+            }).then(() => fetchTasks());
+        }
+    </script>
 </body>
 </html>
